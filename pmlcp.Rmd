@@ -1,0 +1,132 @@
+---
+title: "Practical Machine Learning: Course Project Writeup-Human Activity Recognition"
+author: "JMST"
+date: "December 14, 2015"
+output: 
+  html_document:
+    keep_md: true
+---
+
+##Overview
+  Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.  
+  
+  In this project, we will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict the manner in which they did the exercise.  
+  
+  The goal of our project is to predict the manner in which exercise was done. This is the "classe" variable in the training set. I may use any of the other variables to predict with. I am expected to create a report describing how to built the model, how cross validation will be used, what I think the expected out of sample error is, and why I made the choices I did. I will also use my prediction model to predict 20 different test cases.
+  
+##Loading and preprocessing the data
+
+The training data for this project are available here:
+(https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here:
+(https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+The data for this project come from this source: 
+(http://groupware.les.inf.puc-rio.br/har). 
+
+Setting Directory and Loading required packages:
+```{r echo=FALSE} 
+setwd("C:/Users/tiani_000/Desktop/courserarpogramming/PML")
+library(lattice)
+library(ggplot2)
+library(caret)
+library(survival)
+library(cluster)
+library(splines)
+library(parallel)
+library(plyr)
+```
+
+##Loading and reading data
+The training set consists of 19622 observations of 160 variables, one of which is the dependent variable as far as this study is concerned.
+Irrelevant variables can be removed as they are unlikely to be related to dependent variable 
+```{r}
+url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+tData = read.csv("pml-training.csv", na.strings=c("", "NA", "NULL"))
+testDt = read.csv("pml-testing.csv", na.strings=c("", "NA", "NULL"))
+dim(tData)
+dim(testDt)
+trainingDt <- tData[ , colSums(is.na(tData)) == 0]
+dim(trainingDt)
+DtNAs <- apply(tData, 2, function(x) { sum(is.na(x)) })
+LegitDt <- subset(tData[, which(DtNAs == 0)], 
+                     select=-c(X, user_name, new_window, num_window, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp))
+dim(LegitDt)
+testDt <- testDt[, colSums(is.na(testDt)) == 0]
+testData <- testDt[, -c(1:7)]
+dim(testData)
+```
+
+##Splitting Data to create Model
+
+We now split the updated training dataset into a training dataset (80% of the observations) and a validation dataset (20% of the observations). This validation dataset will allow us to perform cross validation when developing our model.
+```{r}
+teaching <- createDataPartition(LegitDt$classe, p=0.8, list=F)
+tData <- LegitDt[teaching,]
+testDt <- LegitDt[-teaching,]
+
+```
+
+##Cross-validation
+
+We will use random forest as our model as implemented in the randomForest package by Breiman's random forest algorithm (based on Breiman and Cutler's original Fortran code) for classification and regression.Using random forest, the out of sample error should be small.
+```{r}
+Dom <- trainControl(method = "cv", number = 5)
+ RpartDt <- train(classe ~ ., data = tData, method = "rpart", 
+                    trControl = Dom)
+print(RpartDt, digits = 4)
+
+library(randomForest)
+mock0 <- randomForest(classe ~ ., data = tData)
+mock0
+mock0$confusion
+crossprognosis <- predict(mock0, testDt)
+#Checking the predictions against the data held from the test data.
+sum(crossprognosis == testDt$classe) / length(crossprognosis)
+confusionMatrix(testDt$classe, crossprognosis)
+
+```
+our model shows a at least 99.72% accuracy against our test dataset and this is confirmed by the above confusion matrix. Out of sample accuracy estimated at 0.9972 , or 99.72% So that means the out-of-sample error We estimate is about 0.0028, or 0.28%. The out-of-sample error should not be over 0.5% for most accurate results.
+
+##Models and Predictions
+
+```{r}
+#Let us take a look at Random forest Model VS rpart Model
+#Ramdom Forest
+set.seed(1111)
+library(randomForest)
+mock1 <- randomForest(classe ~. , data=tData, method="class")
+prognosis1 <- predict(mock1, testDt, type = "class")
+confusionMatrix(prognosis1, testDt$classe)
+
+#rpart Model
+library(rpart)
+mock2 <- rpart(classe ~ ., data=tData, method="class")
+prognosis2 <- predict(mock2, testDt, type = "class")
+confusionMatrix(prognosis2, testDt$classe)
+
+```
+
+##Conclusion
+
+As it is seen, the confusion matrix from the Random Forest model is very accurate. I tested with different models but only the Random Forest model turned out to be the most accurate for this dataset. Because my test data was around 99% accurate I expected nearly all of the submitted test cases to be correct. All my 20 tested cases turned were correct at submission.
+
+##Submission to Coursera
+
+```{r}
+answers=predict(mock1,testData)
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+answers
+
+pml_write_files(answers)
+```
+
+
